@@ -1,5 +1,9 @@
 Zmey is a micro-framework for testing distributed algorithms.
 
+[![GoDoc](https://godoc.org/github.com/stratumn/zmey?status.svg)](https://godoc.org/github.com/stratumn/zmey)
+
+---
+
 ### About
 
 Zmey hides the complexity of setting up and running a distributed system; and managing inter-process and client-process communication. You're only required to implement a simple interface, telling how the process should react to incoming messages and client calls; and the injector, supplying the initial set of messages. Zmey will then run the implemenation of the algorithms at a given scale and collect the returned messages.
