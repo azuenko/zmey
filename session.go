@@ -231,13 +231,23 @@ func (s *Session) IsIdle() bool {
 	return true
 }
 
-// Wait blocks until IsIdle is true
-func (s *Session) Wait() {
+// WaitIdle blocks until IsIdle is true
+func (s *Session) WaitIdle() {
 	for {
 		if s.IsIdle() {
 			return
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// WaitBusy blocks until IsIdle is false
+func (s *Session) WaitBusy() {
+	for {
+		if !s.IsIdle() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

@@ -9,126 +9,126 @@ import (
 	"time"
 )
 
+// TODO: add context
+
 // Net abstracts the inter-process connections
 type Net struct {
+	scale      int
+	session    *Session
+	filterF    FilterFunc
 	inputCs    []chan interface{}
 	outputCs   []chan interface{}
 	buffer     [][]interface{}
-	scale      int
+	bufferLock sync.RWMutex
 	bufferedN  int
 	sentN      int
 	receivedN  int
-	bufferLock sync.RWMutex
 }
 
 // NewNet creates and returns a new instance of Net. Scale indicates the size
-// of the network, session additionally may be provided to report status and stats.
+// of the network, session may be optionally provided to report status and stats.
 func NewNet(scale int, session *Session) *Net {
+
 	n := Net{
 		scale:    scale,
 		inputCs:  make([]chan interface{}, scale*scale),
 		outputCs: make([]chan interface{}, scale*scale),
 		buffer:   make([][]interface{}, scale*scale),
+		session:  session,
 	}
 
 	for i := 0; i < scale; i++ {
 		for j := 0; j < scale; j++ {
-			if i != j {
-				n.inputCs[i*scale+j] = make(chan interface{})
-				n.outputCs[i*scale+j] = make(chan interface{})
-			}
+			n.inputCs[i*scale+j] = make(chan interface{})
+			n.outputCs[i*scale+j] = make(chan interface{})
 		}
 	}
 
-	go func() {
-		if session != nil {
-			session.ProfNetworkStart()
-		}
-
-		cases := make([]reflect.SelectCase, 2*scale*scale+1)
-		for i := 0; i < scale*scale; i++ {
-			cases[i] = reflect.SelectCase{
-				Dir:  reflect.SelectRecv,
-				Chan: reflect.ValueOf(n.inputCs[i]),
-			}
-		}
-
-		for {
-			cases[2*scale*scale] = reflect.SelectCase{
-				Dir:  reflect.SelectRecv,
-				Chan: reflect.ValueOf(time.After(timeoutNetwork)),
-			}
-			for i := scale * scale; i < 2*scale*scale; i++ {
-				if len(n.buffer[i-scale*scale]) > 0 {
-					cases[i] = reflect.SelectCase{
-						Dir:  reflect.SelectSend,
-						Chan: reflect.ValueOf(n.outputCs[i-scale*scale]),
-						Send: reflect.ValueOf(n.buffer[i-scale*scale][0]),
-					}
-				} else {
-					cases[i] = reflect.SelectCase{
-						Dir:  reflect.SelectSend,
-						Chan: reflect.ValueOf(nil),
-						Send: reflect.ValueOf(struct{}{}),
-					}
-				}
-			}
-			if session != nil {
-				session.ProfNetworkSelectStart()
-			}
-			chosen, value, ok := reflect.Select(cases)
-			if session != nil {
-				session.ProfNetworkSelectEnd()
-			}
-
-			if chosen == 2*scale*scale {
-				if n.bufferedN == 0 {
-
-					if session != nil {
-						session.ReportNetworkIdle()
-					}
-					time.Sleep(sleepNetwork)
-					if session != nil {
-						session.ReportNetworkBusy()
-					}
-				}
-				continue
-			}
-			if chosen < scale*scale {
-				if !ok {
-					log.Printf("[   N] channel %d is closed", chosen)
-					continue
-				}
-				n.push(chosen, value.Interface())
-			} else {
-				n.pop(chosen - scale*scale)
-			}
-		}
-
-	}()
+	go n.loop()
 
 	return &n
 }
 
-func (n *Net) push(index int, item interface{}) {
-	n.bufferLock.Lock()
-	defer n.bufferLock.Unlock()
+func (n *Net) loop() {
+	if n.session != nil {
+		n.session.ProfNetworkStart()
+	}
 
-	n.buffer[index] = append(n.buffer[index], item)
-	n.bufferedN++
-	n.receivedN++
+	cases := make([]reflect.SelectCase, 2*n.scale*n.scale+1)
+	for i := 0; i < n.scale*n.scale; i++ {
+		cases[i] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(n.inputCs[i]),
+		}
+	}
+
+	for {
+		cases[2*n.scale*n.scale] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(time.After(timeoutNetwork)),
+		}
+		for i := n.scale * n.scale; i < 2*n.scale*n.scale; i++ {
+			if len(n.buffer[i-n.scale*n.scale]) > 0 {
+				cases[i] = reflect.SelectCase{
+					Dir:  reflect.SelectSend,
+					Chan: reflect.ValueOf(n.outputCs[i-n.scale*n.scale]),
+					Send: reflect.ValueOf(n.buffer[i-n.scale*n.scale][0]),
+				}
+			} else {
+				// It's easier to add nil channel and keep the array length fixed
+				cases[i] = reflect.SelectCase{
+					Dir:  reflect.SelectSend,
+					Chan: reflect.ValueOf(nil),
+					Send: reflect.ValueOf(struct{}{}),
+				}
+			}
+		}
+		if n.session != nil {
+			n.session.ProfNetworkSelectStart()
+		}
+		chosen, value, ok := reflect.Select(cases)
+		if n.session != nil {
+			n.session.ProfNetworkSelectEnd()
+		}
+
+		switch {
+		case 0 <= chosen && chosen < n.scale*n.scale: // send
+			if !ok {
+				log.Printf("[   N] channel %d is closed", chosen)
+				continue
+			}
+
+			from := chosen % n.scale
+			to := chosen / n.scale
+
+			if n.filterF == nil || n.filterF(from, to) {
+				n.push(chosen, value.Interface())
+			}
+		case n.scale*n.scale <= chosen && chosen < 2*n.scale*n.scale: // receive
+			// No need to use the returned value, it's been already sent
+			// over the channel in Select() statement
+			_ = n.pop(chosen - n.scale*n.scale)
+		case chosen == 2*n.scale*n.scale: // timeout
+			if n.bufferedN == 0 {
+
+				if n.session != nil {
+					n.session.ReportNetworkIdle()
+				}
+				time.Sleep(sleepNetwork)
+				if n.session != nil {
+					n.session.ReportNetworkBusy()
+				}
+			}
+		default:
+			log.Printf("[   N] chosen incorrect channel %d", chosen)
+		}
+	}
+
 }
 
-func (n *Net) pop(index int) interface{} {
-	n.bufferLock.Lock()
-	defer n.bufferLock.Unlock()
-
-	item := n.buffer[index][0]
-	n.buffer[index] = n.buffer[index][1:]
-	n.bufferedN--
-	n.sentN++
-
-	return item
+// Filter sets FilterFunc to selectively cut communicational channels
+func (n *Net) Filter(filterF FilterFunc) {
+	n.filterF = filterF
 }
 
 // Send sens the message `m` to the recepeint with process id `to`. `as` should
@@ -199,4 +199,25 @@ func (n *Net) Stats() (int, int, int) {
 	defer n.bufferLock.RUnlock()
 
 	return n.receivedN, n.bufferedN, n.sentN
+}
+
+func (n *Net) push(index int, item interface{}) {
+	n.bufferLock.Lock()
+	defer n.bufferLock.Unlock()
+
+	n.buffer[index] = append(n.buffer[index], item)
+	n.bufferedN++
+	n.receivedN++
+}
+
+func (n *Net) pop(index int) interface{} {
+	n.bufferLock.Lock()
+	defer n.bufferLock.Unlock()
+
+	item := n.buffer[index][0]
+	n.buffer[index] = n.buffer[index][1:]
+	n.bufferedN--
+	n.sentN++
+
+	return item
 }

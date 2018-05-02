@@ -16,21 +16,42 @@ import (
 // `perNode` messages to next `perNode` nodes. If `pid` + `to` exceeds `scale`,
 // modular arithmetics apply.
 func TestDefault(t *testing.T) {
-	const scale = 10
-	const perNode = 1000
+	const scale = 3
+	const perNode = 1
 
 	z := zmey.NewZmey(&zmey.Config{
 		Scale:   scale,
 		Factory: NewForwarder,
+		// Debug:   true,
 	})
 
-	go func() {
-		for {
-			t.Log(z.Status())
-			t.Log("\n" + z.NetBufferStats())
-			time.Sleep(1 * time.Second)
-		}
-	}()
+	// go func() {
+	// 	for {
+	// 		t.Log(z.Status())
+	// 		t.Log("\n" + z.NetBufferStats())
+	// 		time.Sleep(1 * time.Second)
+	// 	}
+	// }()
+
+	testWithZmeyInstance(t, z, scale, perNode)
+}
+
+func TestMultirun(t *testing.T) {
+	const scale = 10
+	const perNode = 10
+
+	z := zmey.NewZmey(&zmey.Config{
+		Scale:   scale,
+		Factory: NewForwarder,
+		// Debug:   true,
+	})
+
+	testWithZmeyInstance(t, z, scale, perNode)
+	testWithZmeyInstance(t, z, scale, perNode)
+	testWithZmeyInstance(t, z, scale, perNode)
+}
+
+func testWithZmeyInstance(t *testing.T, z *zmey.Zmey, scale, perNode int) {
 
 	callMap := make([][]FCall, scale)
 	seq := 0
@@ -42,20 +63,25 @@ func TestDefault(t *testing.T) {
 		}
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
-
-	injectOutput, err := z.Inject(ctx, func(pid int, c zmey.Client) {
+	injectF := func(pid int, c zmey.Client) {
 		for k := 0; k < perNode; k++ {
 			c.Call(callMap[pid][k])
 		}
-	})
+	}
+
+	z.Inject(injectF)
+
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
+
+	responses, traces, err := z.Round(ctx)
 
 	require.NoError(t, err)
 
-	require.Equal(t, scale, len(injectOutput), "inject output size mismatch")
+	require.Equal(t, scale, len(responses), "responses size mismatch")
+	require.Equal(t, scale, len(traces), "traces size mismatch")
 
-	for pid, messages := range injectOutput {
-		require.Equal(t, perNode, len(messages), "received messages for pid %d", pid)
+	for pid := range responses {
+		require.Equal(t, perNode, len(responses[pid]), "received responses for pid %d", pid)
 		expectedFCalls := make([]FCall, perNode)
 
 		// Constructing what to expect
@@ -74,7 +100,7 @@ func TestDefault(t *testing.T) {
 		})
 		actualFCalls := make([]FCall, perNode)
 		for k := 0; k < perNode; k++ {
-			actualFCall, ok := injectOutput[pid][k].(FCall)
+			actualFCall, ok := responses[pid][k].(FCall)
 			if !ok {
 				t.Fatalf("cannot coerce to FCall")
 			}
@@ -87,6 +113,70 @@ func TestDefault(t *testing.T) {
 
 		assert.Equal(t, expectedFCalls, actualFCalls)
 	}
+
+	for pid := range traces {
+		expectedLenTraces := 2*perNode + perNode - perNode/scale
+		assert.Equal(t, expectedLenTraces, len(traces[pid]), "received traced for pid %d", pid)
+	}
+
+}
+
+func TestCrash(t *testing.T) {
+
+	const scale = 5
+
+	calls := make([]FCall, scale)
+
+	calls[0] = FCall{SequenceNumber: 0, To: 3, Payload: getTag(t)}
+	calls[1] = FCall{SequenceNumber: 1, To: 2, Payload: getTag(t)}
+	calls[2] = FCall{SequenceNumber: 2, To: 0, Payload: getTag(t)}
+	calls[3] = FCall{SequenceNumber: 3, To: 1, Payload: getTag(t)}
+	calls[4] = FCall{SequenceNumber: 4, To: 3, Payload: getTag(t)}
+
+	filterF := func(from, to int) bool {
+		if from == 0 || to == 0 {
+			return false
+		}
+		return true
+	}
+
+	z := zmey.NewZmey(&zmey.Config{
+		Scale:   scale,
+		Factory: NewForwarder,
+	})
+
+	z.Filter(filterF)
+
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
+
+	injectF := func(pid int, c zmey.Client) {
+		c.Call(calls[pid])
+	}
+	z.Inject(injectF)
+
+	responses, _, err := z.Round(ctx)
+
+	require.NoError(t, err)
+
+	require.Equal(t, scale, len(responses), "inject output size mismatch")
+
+	fcallOutput := make([][]FCall, scale)
+	for i := range responses {
+		fcallOutput[i] = make([]FCall, len(responses[i]))
+		for j := range responses[i] {
+			fcallOutput[i][j] = responses[i][j].(FCall)
+		}
+		sort.Slice(fcallOutput[i], func(p, q int) bool {
+			return fcallOutput[i][p].SequenceNumber < fcallOutput[i][q].SequenceNumber
+		})
+	}
+
+	assert.Equal(t, []FCall{}, fcallOutput[0])
+	assert.Equal(t, []FCall{calls[3]}, fcallOutput[1])
+	assert.Equal(t, []FCall{calls[1]}, fcallOutput[2])
+	assert.Equal(t, []FCall{calls[4]}, fcallOutput[3])
+	assert.Equal(t, []FCall{}, fcallOutput[4])
+
 }
 
 // Give me two random bytes

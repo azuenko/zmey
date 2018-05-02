@@ -6,14 +6,14 @@ import (
 	"time"
 )
 
-func processFunc(process Process, pid int, scale int, net *Net, callC chan *Call, session *Session) {
-	session.ProfProcessStart(pid)
+func (z *Zmey) processLoop(pid int) {
+	z.session.ProfProcessStart(pid)
 
-	cases := make([]reflect.SelectCase, scale+2)
-	for i := 0; i < scale; i++ {
-		recvC, err := net.Recv(pid, i)
+	cases := make([]reflect.SelectCase, z.c.Scale+3)
+	for i := 0; i < z.c.Scale; i++ {
+		recvC, err := z.net.Recv(pid, i)
 		if err != nil {
-			log.Printf("[%4d] processFunc: error: %s", pid, err)
+			log.Printf("[%4d] processLoop: error: %s", pid, err)
 			continue
 		}
 		cases[i] = reflect.SelectCase{
@@ -21,118 +21,153 @@ func processFunc(process Process, pid int, scale int, net *Net, callC chan *Call
 			Chan: reflect.ValueOf(recvC),
 		}
 	}
-	cases[scale] = reflect.SelectCase{
+	cases[z.c.Scale] = reflect.SelectCase{
 		Dir:  reflect.SelectRecv,
-		Chan: reflect.ValueOf(callC),
+		Chan: reflect.ValueOf(z.callCs[pid]),
 	}
 
+	cases[z.c.Scale+1] = reflect.SelectCase{
+		Dir:  reflect.SelectRecv,
+		Chan: reflect.ValueOf(z.tickCs[pid]),
+	}
 	for {
-		cases[scale+1] = reflect.SelectCase{
+
+		cases[z.c.Scale+2] = reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(time.After(timeoutProcess)),
 		}
 
-		session.ProfProcessSelectStart(pid)
+		z.session.ProfProcessSelectStart(pid)
 		chosen, value, ok := reflect.Select(cases)
-		session.ProfProcessSelectEnd(pid)
-
-		if chosen == scale+1 { // timeout
-			if err := session.ReportProcessIdle(pid); err != nil {
-				log.Printf("[%4d] processFunc: error %s", pid, err)
-			}
-			time.Sleep(sleepProcess)
-			if err := session.ReportProcessBusy(pid); err != nil {
-				log.Printf("[%4d] processFunc: error %s", pid, err)
-			}
-			continue
-		}
+		z.session.ProfProcessSelectEnd(pid)
 
 		if !ok {
-			log.Printf("[%4d] processFunc: network/client channel %d is closed", pid, chosen)
+			log.Printf("[%4d] processLoop: channel %d is closed", pid, chosen)
 			continue
 		}
 
-		if chosen == scale { // client call
-			call, ok := value.Interface().(*Call)
+		switch {
+		case 0 <= chosen && chosen < z.c.Scale: // network recv
+			payload := value.Interface()
+
+			if z.c.Debug {
+				log.Printf("[%4d] processLoop: received message from %d : %+v", pid, chosen, payload)
+			}
+			z.processes[pid].ReceiveNet(chosen, payload)
+			if z.c.Debug {
+				log.Printf("[%4d] processLoop: message processed", pid)
+			}
+		case chosen == z.c.Scale: // client recv
+			call := value.Interface()
+
+			if z.c.Debug {
+				log.Printf("[%4d] processLoop: received call: %+v", pid, call)
+			}
+			z.processes[pid].ReceiveCall(call)
+			if z.c.Debug {
+				log.Printf("[%4d] processLoop: call processed", pid)
+			}
+		case chosen == z.c.Scale+1: // tick
+			t, ok := value.Interface().(uint)
 			if !ok {
-				log.Printf("[%4d] processFunc: value cannot be converted to call: %+v", pid, value)
+				log.Printf("[%4d] processLoop: value cannot be converted to tick: %+v", pid, value)
 				continue
 			}
 
-			if debug {
-				log.Printf("[%4d] processFunc: received call: %+v", pid, call)
+			if z.c.Debug {
+				log.Printf("[%4d] processLoop: received tick: %d", pid, t)
 			}
-			process.ReceiveCall(call)
-			if debug {
-				log.Printf("[%4d] processFunc: call processed", pid)
+			z.processes[pid].Tick(t)
+		case chosen == z.c.Scale+2: // timeout
+			if z.c.Debug {
+				log.Printf("[%4d] processLoop: idle", pid)
 			}
-			continue
-		}
-
-		message, ok := value.Interface().(*Message)
-		if !ok {
-			log.Printf("[%4d] processFunc: value cannot be converted to message %+v", pid, value)
-			continue
-		}
-
-		if debug {
-			log.Printf("[%4d] processFunc: received message: %+v", pid, message)
-		}
-		process.ReceiveNet(message)
-		if debug {
-			log.Printf("[%4d] processFunc: message processed", pid)
+			if err := z.session.ReportProcessIdle(pid); err != nil {
+				log.Printf("[%4d] processLoop: error %s", pid, err)
+			}
+			time.Sleep(sleepProcess)
+			if err := z.session.ReportProcessBusy(pid); err != nil {
+				log.Printf("[%4d] processLoop: error %s", pid, err)
+			}
+		default:
+			log.Printf("[%4d] processLoop: chosen incorrect channel %d", pid, chosen)
 		}
 
 	}
 
 }
 
-func collectResponsesFunc(scale int, returnCs []chan *Call, responses *[][]interface{}, session *Session) {
-	session.ProfCollectStart()
+func (z *Zmey) collectLoop() {
+	z.session.ProfCollectStart()
 
-	cases := make([]reflect.SelectCase, scale+1)
-	for i := 0; i < scale; i++ {
+	cases := make([]reflect.SelectCase, 2*z.c.Scale+1)
+
+	for i := 0; i < z.c.Scale; i++ {
 		cases[i] = reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(returnCs[i]),
+			Chan: reflect.ValueOf(z.returnCs[i]),
+		}
+	}
+
+	for i := z.c.Scale; i < 2*z.c.Scale; i++ {
+		cases[i] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(z.traceCs[i-z.c.Scale]),
 		}
 	}
 
 	for {
-		cases[scale] = reflect.SelectCase{
+		cases[2*z.c.Scale] = reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(time.After(timeoutCollect)),
 		}
 
-		session.ProfCollectSelectStart()
+		z.session.ProfCollectSelectStart()
 		chosen, value, ok := reflect.Select(cases)
-		session.ProfCollectSelectEnd()
+		z.session.ProfCollectSelectEnd()
 
-		if chosen == scale { // timeout
+		if !ok {
+			log.Printf("[   C] channel %d is closed", chosen)
+			continue
+		}
 
-			if debug {
-				log.Printf("[   C] collector is idle")
+		switch {
+		case 0 <= chosen && chosen < z.c.Scale: // return call
+			call := value.Interface()
+			if z.c.Debug {
+				log.Printf("[   C] appending response for pid %d", chosen)
 			}
-			session.ReportCollectIdle()
+			z.responsesLock.Lock()
+			z.responses[chosen] = append(z.responses[chosen], call)
+			z.responsesLock.Unlock()
+		case z.c.Scale <= chosen && chosen < 2*z.c.Scale: // trace call
+			trace := value.Interface()
+			if z.c.Debug {
+				log.Printf("[   C] appending trace for pid %d", chosen)
+			}
+			z.tracesLock.Lock()
+			z.traces[chosen-z.c.Scale] = append(z.traces[chosen-z.c.Scale], trace)
+			z.tracesLock.Unlock()
+		case chosen == 2*z.c.Scale: // timeout
+			if z.c.Debug {
+				log.Printf("[   C] idle")
+			}
+			z.session.ReportCollectIdle()
 			time.Sleep(sleepCollect)
-			session.ReportCollectBusy()
-			continue
+			z.session.ReportCollectBusy()
+		default:
+			log.Printf("[   C] chosen incorrect channel %d", chosen)
 		}
 
-		if !ok {
-			log.Printf("[   C] return channel %d is closed", chosen)
-			continue
-		}
+	}
+}
 
-		call, ok := value.Interface().(*Call)
-		if !ok {
-			log.Printf("[   C] value cannot be converted to call %+v", value)
-			continue
-		}
-		if debug {
-			log.Printf("[   C] appending value for pid %d", chosen)
-		}
-		(*responses)[chosen] = append((*responses)[chosen], call.Payload)
-
+func (z *Zmey) tickF(pid int, t uint) {
+	if z.c.Debug {
+		log.Printf("[%4d] tickF: received %d", pid, t)
+	}
+	z.tickCs[pid] <- t
+	if z.c.Debug {
+		log.Printf("[%4d] tickF: done", pid)
 	}
 }

@@ -70,6 +70,29 @@ func TestSingle(t *testing.T) {
 	}
 }
 
+func TestLoopback(t *testing.T) {
+	const scale = 1
+
+	n := NewNet(scale, NewSession(scale))
+
+	var err error
+	data := 42
+	err = n.Send(0, 0, data)
+
+	require.NoError(t, err)
+
+	recvC, err := n.Recv(0, 0)
+
+	require.NoError(t, err)
+
+	select {
+	case recv := <-recvC:
+		assert.Equal(t, data, recv)
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timeout")
+	}
+}
+
 func TestQueue(t *testing.T) {
 	const scale = 4
 

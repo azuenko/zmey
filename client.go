@@ -7,16 +7,17 @@ import (
 // Client lets the injector to communicate with the process.
 type Client struct {
 	pid   int
-	callC chan *Call
+	callC chan interface{}
+	debug bool
 }
 
 // Call sends a payload to the process.
 func (c Client) Call(payload interface{}) {
-	if debug {
+	if c.debug {
 		log.Printf("[%4d] Call: received %+v", c.pid, payload)
 	}
-	c.callC <- &Call{Payload: payload}
-	if debug {
+	c.callC <- payload
+	if c.debug {
 		log.Printf("[%4d] Call: done", c.pid)
 	}
 }
