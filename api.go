@@ -21,30 +21,33 @@ type API interface {
 
 // api implements exported API interface
 type api struct {
+	// scale   int
 	pid     int
-	scale   int
 	net     *Net
 	returnC chan interface{}
 	traceC  chan interface{}
 	debug   bool
 }
 
-func (a api) Send(to int, payload interface{}) {
-	if to < 0 || to >= a.scale {
-		log.Printf("[%4d] Send: error: %d: invalid message recepient id, should be between 0 and %d", a.pid, to, a.scale)
-		return
-	}
+func (a *api) BindNet(net *Net) {
+	a.net = net
+}
 
+func (a *api) Send(to int, payload interface{}) {
 	if a.debug {
 		log.Printf("[%4d] Send: sending message %+v", a.pid, payload)
 	}
-	a.net.Send(a.pid, to, payload)
+	if a.net != nil {
+		a.net.Send(a.pid, to, payload)
+	} else {
+		log.Printf("[%4d] Send: Error: network is nil", a.pid)
+	}
 	if a.debug {
 		log.Printf("[%4d] Send: done", a.pid)
 	}
 }
 
-func (a api) Return(c interface{}) {
+func (a *api) Return(c interface{}) {
 	if a.debug {
 		log.Printf("[%4d] Return: returning call %+v", a.pid, c)
 	}
@@ -54,11 +57,14 @@ func (a api) Return(c interface{}) {
 	}
 }
 
-func (a api) Trace(t interface{}) {
+func (a *api) Trace(t interface{}) {
+	if a.debug {
+		log.Printf("[%4d] T: %+v", a.pid, t)
+	}
 	a.traceC <- t
 }
 
-func (a api) ReportError(err error) {
+func (a *api) ReportError(err error) {
 	log.Printf("[%4d] ReportError: %s", a.pid, err)
 	a.traceC <- err
 }

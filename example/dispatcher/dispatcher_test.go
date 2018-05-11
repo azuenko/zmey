@@ -16,10 +16,14 @@ func TestDefault(t *testing.T) {
 	const timeout = 1000
 
 	z := zmey.NewZmey(&zmey.Config{
-		Scale:   scale,
-		Factory: func(pid int) zmey.Process { return NewDispatcher(pid, timeout) },
-		// Debug:   true,
+		Debug: true,
 	})
+
+	factoryF := func(pid int) zmey.Process { return NewDispatcher(pid, timeout) }
+
+	for i := 0; i < scale; i++ {
+		z.AddProcess(factoryF)
+	}
 
 	filterF := func(from, to int) bool {
 		if from == 0 || to == 0 {

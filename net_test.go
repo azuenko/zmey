@@ -1,6 +1,8 @@
 package zmey
 
 import (
+	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,7 +13,9 @@ import (
 func TestIncorrectPid(t *testing.T) {
 	const scale = 4
 
-	n := NewNet(scale, NewSession(scale))
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	n := NewNet(ctx, &wg, scale, NewSession(scale))
 
 	var err error
 
@@ -50,7 +54,9 @@ func TestIncorrectPid(t *testing.T) {
 func TestSingle(t *testing.T) {
 	const scale = 4
 
-	n := NewNet(scale, NewSession(scale))
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	n := NewNet(ctx, &wg, scale, NewSession(scale))
 
 	var err error
 	data := 42
@@ -73,7 +79,9 @@ func TestSingle(t *testing.T) {
 func TestLoopback(t *testing.T) {
 	const scale = 1
 
-	n := NewNet(scale, NewSession(scale))
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	n := NewNet(ctx, &wg, scale, NewSession(scale))
 
 	var err error
 	data := 42
@@ -96,7 +104,9 @@ func TestLoopback(t *testing.T) {
 func TestQueue(t *testing.T) {
 	const scale = 4
 
-	n := NewNet(scale, NewSession(scale))
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	n := NewNet(ctx, &wg, scale, NewSession(scale))
 
 	var err error
 
@@ -147,8 +157,9 @@ func TestQueue(t *testing.T) {
 func TestBufferStats(t *testing.T) {
 	const scale = 4
 
-	session := NewSession(scale)
-	n := NewNet(scale, session)
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	n := NewNet(ctx, &wg, scale, NewSession(scale))
 
 	n.Send(0, 1, struct{}{})
 	n.Send(0, 1, struct{}{})

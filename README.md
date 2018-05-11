@@ -14,12 +14,16 @@ The best place to use Zmey is unit tests -- it is fast and quite deterministic:
 
 ```go
 func TestProcess(t *testing.T) {
-    // Create Zmey instance configured to run the system of 10 processes,
-    // with each process created by NewProcess function
+    // Create Zmey instance
     z := zmey.NewZmey(&zmey.Config{
-        Scale:   10,
-        Factory: NewProcess,
+        Debug: true,
     })
+
+    // Configure Zmey instance to run the system of 10 processes,
+    // with each process created by NewProcess(pid int) function
+    for i := 0; i < scale; i++ {
+        z.AddProcess(NewProcess)
+    }
 
     // Prepare the slices of initial calls, one slice per process
     initialCalls := make([][]interface{}, 10)
@@ -94,14 +98,12 @@ For more details check out the forwarder example.
 
 ### Status
 
-Zmey is in its early development stage. Current version is good for launching algorithms, and do some simple failure simulation.
+Zmey is in its alpha state. Current version is good for launching algorithms, and doing some failure simulation. It is capable of creating systems with different types of processes (client/sever, corrent/Byzantine server, etc), and doing some basic live reconfiguration. Next releases will primarily focus on stability and performance optimizations.
 
-Next releases expect to receive new nice features, such as:
+Also, new nice features expected, such as:
 
-* live reconfiguration, including adding/removing processes
+* live reconfiguration (removing/replacing) processes
 * advanced network simulation (selective message drop and reordering)
-* multiple `Process` implementations in a single network to simulate Byzantine fault tolerant algorithms
-* performance opmitisations for scaled networks
 
 
 

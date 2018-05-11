@@ -2,6 +2,7 @@ package forwarder
 
 import (
 	"context"
+	"log"
 	"math/rand"
 	"sort"
 	"testing"
@@ -16,22 +17,30 @@ import (
 // `perNode` messages to next `perNode` nodes. If `pid` + `to` exceeds `scale`,
 // modular arithmetics apply.
 func TestDefault(t *testing.T) {
-	const scale = 3
-	const perNode = 1
+	const scale = 30
+	const perNode = 100
 
 	z := zmey.NewZmey(&zmey.Config{
-		Scale:   scale,
-		Factory: NewForwarder,
-		// Debug:   true,
+	// Debug: true,
 	})
 
-	// go func() {
-	// 	for {
-	// 		t.Log(z.Status())
-	// 		t.Log("\n" + z.NetBufferStats())
-	// 		time.Sleep(1 * time.Second)
-	// 	}
-	// }()
+	for i := 0; i < scale; i++ {
+		z.AddProcess(NewForwarder)
+	}
+
+	go func() {
+		for msg := range z.Status() {
+			log.Printf(msg)
+			time.Sleep(250 * time.Millisecond)
+		}
+	}()
+
+	go func() {
+		for msg := range z.BufferStats() {
+			log.Printf("\n" + msg)
+			time.Sleep(1 * time.Second)
+		}
+	}()
 
 	testWithZmeyInstance(t, z, scale, perNode)
 }
@@ -41,11 +50,12 @@ func TestMultirun(t *testing.T) {
 	const perNode = 10
 
 	z := zmey.NewZmey(&zmey.Config{
-		Scale:   scale,
-		Factory: NewForwarder,
-		// Debug:   true,
+	// Debug: true,
 	})
 
+	for i := 0; i < scale; i++ {
+		z.AddProcess(NewForwarder)
+	}
 	testWithZmeyInstance(t, z, scale, perNode)
 	testWithZmeyInstance(t, z, scale, perNode)
 	testWithZmeyInstance(t, z, scale, perNode)
@@ -141,9 +151,12 @@ func TestCrash(t *testing.T) {
 	}
 
 	z := zmey.NewZmey(&zmey.Config{
-		Scale:   scale,
-		Factory: NewForwarder,
+		Debug: false,
 	})
+
+	for i := 0; i < scale; i++ {
+		z.AddProcess(NewForwarder)
+	}
 
 	z.Filter(filterF)
 

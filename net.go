@@ -1,6 +1,7 @@
 package zmey
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"reflect"
@@ -27,7 +28,7 @@ type Net struct {
 
 // NewNet creates and returns a new instance of Net. Scale indicates the size
 // of the network, session may be optionally provided to report status and stats.
-func NewNet(scale int, session *Session) *Net {
+func NewNet(ctx context.Context, wg *sync.WaitGroup, scale int, session *Session) *Net {
 
 	n := Net{
 		scale:    scale,
@@ -44,22 +45,30 @@ func NewNet(scale int, session *Session) *Net {
 		}
 	}
 
-	go n.loop()
+	go n.loop(ctx, wg)
 
 	return &n
 }
 
-func (n *Net) loop() {
+func (n *Net) loop(ctx context.Context, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
+
 	if n.session != nil {
 		n.session.ProfNetworkStart()
 	}
 
-	cases := make([]reflect.SelectCase, 2*n.scale*n.scale+1)
+	cases := make([]reflect.SelectCase, 2*n.scale*n.scale+2)
 	for i := 0; i < n.scale*n.scale; i++ {
 		cases[i] = reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(n.inputCs[i]),
 		}
+	}
+
+	cases[2*n.scale*n.scale+1] = reflect.SelectCase{
+		Dir:  reflect.SelectRecv,
+		Chan: reflect.ValueOf(ctx.Done()),
 	}
 
 	for {
@@ -93,7 +102,7 @@ func (n *Net) loop() {
 
 		switch {
 		case 0 <= chosen && chosen < n.scale*n.scale: // send
-			if !ok {
+			if chosen != 2*n.scale*n.scale+1 && !ok {
 				log.Printf("[   N] channel %d is closed", chosen)
 				continue
 			}
@@ -110,7 +119,6 @@ func (n *Net) loop() {
 			_ = n.pop(chosen - n.scale*n.scale)
 		case chosen == 2*n.scale*n.scale: // timeout
 			if n.bufferedN == 0 {
-
 				if n.session != nil {
 					n.session.ReportNetworkIdle()
 				}
@@ -119,6 +127,11 @@ func (n *Net) loop() {
 					n.session.ReportNetworkBusy()
 				}
 			}
+		case chosen == 2*n.scale*n.scale+1: // cancel
+			if n.session != nil {
+				n.session.ReportNetworkIdle()
+			}
+			return
 		default:
 			log.Printf("[   N] chosen incorrect channel %d", chosen)
 		}
