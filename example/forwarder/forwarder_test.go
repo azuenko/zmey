@@ -17,15 +17,15 @@ import (
 // `perNode` messages to next `perNode` nodes. If `pid` + `to` exceeds `scale`,
 // modular arithmetics apply.
 func TestDefault(t *testing.T) {
-	const scale = 30
-	const perNode = 100
+	const scale = 10
+	const perNode = 10
 
 	z := zmey.NewZmey(&zmey.Config{
 	// Debug: true,
 	})
 
-	for i := 0; i < scale; i++ {
-		z.AddProcess(NewForwarder)
+	for pid := 0; pid < scale; pid++ {
+		z.SetProcess(pid, NewForwarder(pid))
 	}
 
 	go func() {
@@ -53,8 +53,8 @@ func TestMultirun(t *testing.T) {
 	// Debug: true,
 	})
 
-	for i := 0; i < scale; i++ {
-		z.AddProcess(NewForwarder)
+	for pid := 0; pid < scale; pid++ {
+		z.SetProcess(pid, NewForwarder(pid))
 	}
 	testWithZmeyInstance(t, z, scale, perNode)
 	testWithZmeyInstance(t, z, scale, perNode)
@@ -81,9 +81,11 @@ func testWithZmeyInstance(t *testing.T, z *zmey.Zmey, scale, perNode int) {
 
 	z.Inject(injectF)
 
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Minute)
 
 	responses, traces, err := z.Round(ctx)
+
+	cancelF()
 
 	require.NoError(t, err)
 
@@ -154,20 +156,22 @@ func TestCrash(t *testing.T) {
 		Debug: false,
 	})
 
-	for i := 0; i < scale; i++ {
-		z.AddProcess(NewForwarder)
+	for pid := 0; pid < scale; pid++ {
+		z.SetProcess(pid, NewForwarder(pid))
 	}
 
 	z.Filter(filterF)
-
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
 
 	injectF := func(pid int, c zmey.Client) {
 		c.Call(calls[pid])
 	}
 	z.Inject(injectF)
 
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Minute)
+
 	responses, _, err := z.Round(ctx)
+
+	cancelF()
 
 	require.NoError(t, err)
 

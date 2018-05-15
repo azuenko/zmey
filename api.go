@@ -38,7 +38,10 @@ func (a *api) Send(to int, payload interface{}) {
 		log.Printf("[%4d] Send: sending message %+v", a.pid, payload)
 	}
 	if a.net != nil {
-		a.net.Send(a.pid, to, payload)
+		err := a.net.Send(a.pid, to, payload)
+		if err != nil {
+			log.Printf("[%4d] Send: Error: %s", a.pid, err)
+		}
 	} else {
 		log.Printf("[%4d] Send: Error: network is nil", a.pid)
 	}

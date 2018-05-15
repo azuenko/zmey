@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	// "fmt"
+	// "log"
+	"sort"
 	"sync"
 	"time"
 )
@@ -32,7 +34,8 @@ type Zmey struct {
 
 	c *Config
 
-	packs []pack
+	packs map[int]*pack
+	pids  []int
 
 	tick    uint
 	injectF InjectFunc
@@ -99,6 +102,8 @@ func NewZmey(c *Config) *Zmey {
 
 	z := Zmey{
 		c:            c,
+		packs:        make(map[int]*pack),
+		pids:         []int{},
 		statusC:      make(chan string),
 		bufferStatsC: make(chan string),
 	}
@@ -106,14 +111,28 @@ func NewZmey(c *Config) *Zmey {
 	return &z
 }
 
-// AddProcess adds new process to the existing configugation.
-// The method is thread-safe
-func (z *Zmey) AddProcess(factory FactoryFunc) {
+// SetProcess adds/removes a process. If `process` is nil, it is removed.
+// The method is thread-safe.
+func (z *Zmey) SetProcess(pid int, process Process) {
 	z.Lock()
 	defer z.Unlock()
 
-	pid := len(z.packs)
-	process := factory(pid)
+	// Probably not the most elegant way of updating z.pids
+	defer func() {
+		z.pids = make([]int, len(z.packs))
+		var i int
+		for pid := range z.packs {
+			z.pids[i] = pid
+			i++
+		}
+		sort.Ints(z.pids)
+	}()
+
+	if process == nil {
+		delete(z.packs, pid)
+		return
+	}
+
 	callC := make(chan interface{})
 	returnC := make(chan interface{})
 	traceC := make(chan interface{})
@@ -142,7 +161,7 @@ func (z *Zmey) AddProcess(factory FactoryFunc) {
 		tickC:   tickC,
 	}
 
-	z.packs = append(z.packs, p)
+	z.packs[pid] = &p
 
 }
 
@@ -180,23 +199,21 @@ func (z *Zmey) Tick(t uint) {
 // behaviour. The ErrCancelled is returned if the context is cancelled
 // before the processing ends. The method is thread-safe, however no
 // parallel execution is implemented so far.
-func (z *Zmey) Round(ctx context.Context) ([][]interface{}, [][]interface{}, error) {
+func (z *Zmey) Round(ctx context.Context) (map[int][]interface{}, map[int][]interface{}, error) {
 	z.Lock()
 	defer z.Unlock()
-
-	scale := len(z.packs)
 
 	var wg sync.WaitGroup
 	cancelFs := []context.CancelFunc{}
 
-	session := NewSession(scale)
+	session := NewSession()
 
 	ctxNet, cancelF := context.WithCancel(ctx)
-	net := NewNet(ctxNet, &wg, scale, session)
+	net := NewNet(ctxNet, &wg, z.pids, session)
 	cancelFs = append(cancelFs, cancelF)
 
-	for pid := range z.packs {
-		z.packs[pid].api.BindNet(net)
+	for i := range z.packs {
+		z.packs[i].api.BindNet(net)
 	}
 
 	if z.filterF != nil {
@@ -204,22 +221,22 @@ func (z *Zmey) Round(ctx context.Context) ([][]interface{}, [][]interface{}, err
 		z.filterF = nil
 	}
 
-	for pid := range z.packs {
+	for _, pack := range z.packs {
 		ctxProcess, cancelF := context.WithCancel(ctx)
 		cancelFs = append(cancelFs, cancelF)
-		go z.processLoop(ctxProcess, &wg, &z.packs[pid], session, net)
+		go z.processLoop(ctxProcess, &wg, pack, session, net)
 	}
 
 	if z.injectF != nil {
-		for pid := range z.packs {
-			go z.injectF(pid, z.packs[pid].client)
+		for i := range z.packs {
+			go z.injectF(z.packs[i].pid, z.packs[i].client)
 		}
 		z.injectF = nil
 	}
 
 	if z.tick != 0 {
-		for pid := 0; pid < scale; pid++ {
-			go z.tickF(pid, &wg, z.tick)
+		for _, pack := range z.packs {
+			go z.tickF(pack, &wg, z.tick)
 		}
 		z.tick = 0
 	}
@@ -250,17 +267,17 @@ func (z *Zmey) Round(ctx context.Context) ([][]interface{}, [][]interface{}, err
 		return nil, nil, ErrCancelled
 	}
 
-	responses := make([][]interface{}, len(z.packs))
-	traces := make([][]interface{}, len(z.packs))
+	responses := make(map[int][]interface{})
+	traces := make(map[int][]interface{})
 
-	for pid := range z.packs {
-		traces[pid] = z.packs[pid].traces
-		z.packs[pid].traces = nil
+	for pid, pack := range z.packs {
+		traces[pid] = pack.traces
+		pack.traces = nil
 	}
 
-	for pid := range z.packs {
-		responses[pid] = z.packs[pid].responses
-		z.packs[pid].responses = nil
+	for pid, pack := range z.packs {
+		responses[pid] = pack.responses
+		pack.responses = nil
 	}
 
 	return responses, traces, nil

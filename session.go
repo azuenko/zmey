@@ -10,9 +10,8 @@ import (
 type Session struct {
 	sync.Mutex
 
-	scale       int
 	networkIdle bool
-	processIdle []bool
+	processIdle map[int]bool
 	collectIdle bool
 
 	tNetwork       time.Time
@@ -26,24 +25,23 @@ type Session struct {
 	dCollectSelect time.Duration
 	dCollectSleep  time.Duration
 
-	tProcess       []time.Time
-	tProcessSelect []time.Time
-	tProcessSleep  []time.Time
-	dProcessSelect []time.Duration
-	dProcessSleep  []time.Duration
+	tProcess       map[int]time.Time
+	tProcessSelect map[int]time.Time
+	tProcessSleep  map[int]time.Time
+	dProcessSelect map[int]time.Duration
+	dProcessSleep  map[int]time.Duration
 }
 
 // NewSession creates and returns a new instance of Session
-func NewSession(scale int) *Session {
-	s := Session{scale: scale}
-
-	s.processIdle = make([]bool, scale)
-
-	s.tProcess = make([]time.Time, scale)
-	s.tProcessSelect = make([]time.Time, scale)
-	s.tProcessSleep = make([]time.Time, scale)
-	s.dProcessSelect = make([]time.Duration, scale)
-	s.dProcessSleep = make([]time.Duration, scale)
+func NewSession() *Session {
+	s := Session{
+		processIdle:    make(map[int]bool),
+		tProcess:       make(map[int]time.Time),
+		tProcessSelect: make(map[int]time.Time),
+		tProcessSleep:  make(map[int]time.Time),
+		dProcessSelect: make(map[int]time.Duration),
+		dProcessSleep:  make(map[int]time.Duration),
+	}
 
 	return &s
 }
@@ -89,35 +87,23 @@ func (s *Session) ReportCollectBusy() {
 }
 
 // ReportProcessIdle reports the process with id `pid` is in idle state
-func (s *Session) ReportProcessIdle(pid int) error {
+func (s *Session) ReportProcessIdle(pid int) {
 	s.Lock()
 	defer s.Unlock()
-
-	if pid < 0 || pid >= s.scale {
-		return ErrIncorrectPid
-	}
 
 	s.tProcessSleep[pid] = time.Now()
 
 	s.processIdle[pid] = true
-
-	return nil
 }
 
 // ReportProcessBusy reports the process with id `pid` is in busy state
-func (s *Session) ReportProcessBusy(pid int) error {
+func (s *Session) ReportProcessBusy(pid int) {
 	s.Lock()
 	defer s.Unlock()
-
-	if pid < 0 || pid >= s.scale {
-		return ErrIncorrectPid
-	}
 
 	s.dProcessSleep[pid] += time.Since(s.tProcessSleep[pid])
 
 	s.processIdle[pid] = false
-
-	return nil
 }
 
 // ProfNetworkStart should be called right after network is started
@@ -169,41 +155,25 @@ func (s *Session) ProfCollectSelectEnd() {
 }
 
 // ProfProcessStart should be called right after the process with id `pid` is started
-func (s *Session) ProfProcessStart(pid int) error {
+func (s *Session) ProfProcessStart(pid int) {
 	s.Lock()
 	defer s.Unlock()
 
-	if pid < 0 || pid >= s.scale {
-		return ErrIncorrectPid
-	}
-
 	s.tProcess[pid] = time.Now()
-
-	return nil
 }
 
 // ProfProcessSelectStart should be called right before the process with id `pid` blocks at select call
-func (s *Session) ProfProcessSelectStart(pid int) error {
+func (s *Session) ProfProcessSelectStart(pid int) {
 	s.Lock()
 	defer s.Unlock()
 
-	if pid < 0 || pid >= s.scale {
-		return ErrIncorrectPid
-	}
-
 	s.tProcessSelect[pid] = time.Now()
-
-	return nil
 }
 
 // ProfProcessSelectEnd should be called right after process with id `pid` executes its select call
 func (s *Session) ProfProcessSelectEnd(pid int) {
 	s.Lock()
 	defer s.Unlock()
-
-	if pid < 0 || pid >= s.scale {
-		return
-	}
 
 	s.dProcessSelect[pid] += time.Since(s.tProcessSelect[pid])
 }
@@ -307,16 +277,20 @@ func (s *Session) Profs() string {
 	var dProcessAll time.Duration
 	var dProcessSelectAll, dProcessSleepAll time.Duration
 
-	for pid := 0; pid < s.scale; pid++ {
+	for pid := range s.tProcess {
 		dProcessAll += tNow.Sub(s.tProcess[pid])
 		dProcessSelectAll += s.dProcessSelect[pid]
 		dProcessSleepAll += s.dProcessSleep[pid]
 	}
 
-	pProcessSelect := 100 * dProcessSelectAll / dProcessAll
-	pProcessSleep := 100 * dProcessSleepAll / dProcessAll
+	var pProcessSelect, pProcessSleep int
 
-	return fmt.Sprintf("n[%2d/%2d/%2d] c[%2d/%2d/%2d] p[%2d/%2d/%2d]",
+	if dProcessAll != 0 {
+		pProcessSelect = int(100 * dProcessSelectAll / dProcessAll)
+		pProcessSleep = int(100 * dProcessSleepAll / dProcessAll)
+	}
+
+	return fmt.Sprintf("n[%3d/%3d/%3d] c[%3d/%3d/%3d] p[%3d/%3d/%3d]",
 		100-pNetworkSelect-pNetworkSleep,
 		pNetworkSelect,
 		pNetworkSleep,

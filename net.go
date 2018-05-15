@@ -15,6 +15,8 @@ import (
 // Net abstracts the inter-process connections
 type Net struct {
 	scale      int
+	pids       []int
+	rpids      map[int]int
 	session    *Session
 	filterF    FilterFunc
 	inputCs    []chan interface{}
@@ -28,9 +30,19 @@ type Net struct {
 
 // NewNet creates and returns a new instance of Net. Scale indicates the size
 // of the network, session may be optionally provided to report status and stats.
-func NewNet(ctx context.Context, wg *sync.WaitGroup, scale int, session *Session) *Net {
+func NewNet(ctx context.Context, wg *sync.WaitGroup, pids []int, session *Session) *Net {
+
+	scale := len(pids)
+
+	rpids := make(map[int]int)
+
+	for i, pid := range pids {
+		rpids[pid] = i
+	}
 
 	n := Net{
+		pids:     pids,
+		rpids:    rpids,
 		scale:    scale,
 		inputCs:  make([]chan interface{}, scale*scale),
 		outputCs: make([]chan interface{}, scale*scale),
@@ -38,8 +50,8 @@ func NewNet(ctx context.Context, wg *sync.WaitGroup, scale int, session *Session
 		session:  session,
 	}
 
-	for i := 0; i < scale; i++ {
-		for j := 0; j < scale; j++ {
+	for i := range pids {
+		for j := range pids {
 			n.inputCs[i*scale+j] = make(chan interface{})
 			n.outputCs[i*scale+j] = make(chan interface{})
 		}
@@ -59,7 +71,7 @@ func (n *Net) loop(ctx context.Context, wg *sync.WaitGroup) {
 	}
 
 	cases := make([]reflect.SelectCase, 2*n.scale*n.scale+2)
-	for i := 0; i < n.scale*n.scale; i++ {
+	for i := range n.inputCs {
 		cases[i] = reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(n.inputCs[i]),
@@ -76,16 +88,16 @@ func (n *Net) loop(ctx context.Context, wg *sync.WaitGroup) {
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(time.After(timeoutNetwork)),
 		}
-		for i := n.scale * n.scale; i < 2*n.scale*n.scale; i++ {
-			if len(n.buffer[i-n.scale*n.scale]) > 0 {
-				cases[i] = reflect.SelectCase{
+		for i := range n.outputCs {
+			if len(n.buffer[i]) > 0 {
+				cases[n.scale*n.scale+i] = reflect.SelectCase{
 					Dir:  reflect.SelectSend,
-					Chan: reflect.ValueOf(n.outputCs[i-n.scale*n.scale]),
-					Send: reflect.ValueOf(n.buffer[i-n.scale*n.scale][0]),
+					Chan: reflect.ValueOf(n.outputCs[i]),
+					Send: reflect.ValueOf(n.buffer[i][0]),
 				}
 			} else {
 				// It's easier to add nil channel and keep the array length fixed
-				cases[i] = reflect.SelectCase{
+				cases[n.scale*n.scale+i] = reflect.SelectCase{
 					Dir:  reflect.SelectSend,
 					Chan: reflect.ValueOf(nil),
 					Send: reflect.ValueOf(struct{}{}),
@@ -107,8 +119,8 @@ func (n *Net) loop(ctx context.Context, wg *sync.WaitGroup) {
 				continue
 			}
 
-			from := chosen % n.scale
-			to := chosen / n.scale
+			from := n.pids[chosen%n.scale]
+			to := n.pids[chosen/n.scale]
 
 			if n.filterF == nil || n.filterF(from, to) {
 				n.push(chosen, value.Interface())
@@ -148,11 +160,13 @@ func (n *Net) Filter(filterF FilterFunc) {
 // represent the id of sender process. If either `as` or `to` is out of range,
 // ErrIncorrectPid is returned
 func (n *Net) Send(as, to int, m interface{}) error {
-	if as < 0 || as >= n.scale || to < 0 || to >= n.scale {
+	asIndex, ok1 := n.rpids[as]
+	toIndex, ok2 := n.rpids[to]
+	if !ok1 || !ok2 {
 		return ErrIncorrectPid
 	}
 
-	n.inputCs[to*n.scale+as] <- m
+	n.inputCs[toIndex*n.scale+asIndex] <- m
 
 	return nil
 }
@@ -161,11 +175,13 @@ func (n *Net) Send(as, to int, m interface{}) error {
 // yield the messages sent by `from` to `as`. If either `as` or `from`
 // is out of range, ErrIncorrectPid is returned.
 func (n *Net) Recv(as, from int) (chan interface{}, error) {
-	if as < 0 || as >= n.scale || from < 0 || from >= n.scale {
+	asIndex, ok1 := n.rpids[as]
+	fromIndex, ok2 := n.rpids[from]
+	if !ok1 || !ok2 {
 		return nil, ErrIncorrectPid
 	}
 
-	return n.outputCs[as*n.scale+from], nil
+	return n.outputCs[asIndex*n.scale+fromIndex], nil
 }
 
 // BufferStats returns an ASCII-formatted matrix of the sizes of buffers
@@ -175,8 +191,8 @@ func (n *Net) BufferStats() string {
 	s += "----+----+" + strings.Repeat("----+", n.scale)
 	s += "\n"
 	s += "from|    |"
-	for i := 0; i < n.scale; i++ {
-		s += fmt.Sprintf("%4d|", i)
+	for i := range n.pids {
+		s += fmt.Sprintf("%4d|", n.pids[i])
 	}
 	s += "\n"
 	s += "----+----+" + strings.Repeat("----+", n.scale)
@@ -186,9 +202,9 @@ func (n *Net) BufferStats() string {
 		n.bufferLock.RLock()
 		defer n.bufferLock.RUnlock()
 
-		for i := 0; i < n.scale; i++ {
-			s += fmt.Sprintf("    |%4d|", i)
-			for j := 0; j < n.scale; j++ {
+		for i := range n.pids {
+			s += fmt.Sprintf("    |%4d|", n.pids[i])
+			for j := range n.pids {
 				nm := fmt.Sprintf("%4d|", len(n.buffer[i*n.scale+j]))
 				if nm == "   0|" {
 					nm = "    |"

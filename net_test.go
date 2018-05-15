@@ -10,43 +10,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIncorrectPid(t *testing.T) {
-	const scale = 4
+func TestPid(t *testing.T) {
+	pids := []int{4, 7, -273, 42}
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, scale, NewSession(scale))
+	n := NewNet(ctx, &wg, pids, NewSession())
 
 	var err error
 
-	err = n.Send(0, 5, struct{}{})
+	err = n.Send(4, 7, struct{}{})
+	assert.NoError(t, err)
+
+	err = n.Send(4, -273, struct{}{})
+	assert.NoError(t, err)
+
+	err = n.Send(-273, 42, struct{}{})
+	assert.NoError(t, err)
+
+	_, err = n.Recv(42, 7)
+	assert.NoError(t, err)
+
+	err = n.Send(4, 20, struct{}{})
 	assert.Error(t, ErrIncorrectPid, err)
 
-	err = n.Send(5, 0, struct{}{})
+	err = n.Send(20, 4, struct{}{})
 	assert.Error(t, ErrIncorrectPid, err)
 
-	err = n.Send(5, 5, struct{}{})
-	assert.Error(t, ErrIncorrectPid, err)
-
-	err = n.Send(-1, 0, struct{}{})
-	assert.Error(t, ErrIncorrectPid, err)
-
-	err = n.Send(0, -5, struct{}{})
-	assert.Error(t, ErrIncorrectPid, err)
-
-	_, err = n.Recv(0, 5)
-	assert.Error(t, ErrIncorrectPid, err)
-
-	_, err = n.Recv(5, 0)
-	assert.Error(t, ErrIncorrectPid, err)
-
-	_, err = n.Recv(5, 5)
-	assert.Error(t, ErrIncorrectPid, err)
-
-	_, err = n.Recv(-1, 0)
-	assert.Error(t, ErrIncorrectPid, err)
-
-	_, err = n.Recv(0, -5)
+	_, err = n.Recv(100, 200)
 	assert.Error(t, ErrIncorrectPid, err)
 
 }
@@ -56,7 +47,7 @@ func TestSingle(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, scale, NewSession(scale))
+	n := NewNet(ctx, &wg, []int{3, 2, 1, 0}, NewSession())
 
 	var err error
 	data := 42
@@ -81,7 +72,7 @@ func TestLoopback(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, scale, NewSession(scale))
+	n := NewNet(ctx, &wg, []int{0}, NewSession())
 
 	var err error
 	data := 42
@@ -106,7 +97,7 @@ func TestQueue(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, scale, NewSession(scale))
+	n := NewNet(ctx, &wg, []int{1, 2, 3, 4}, NewSession())
 
 	var err error
 
@@ -159,26 +150,26 @@ func TestBufferStats(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, scale, NewSession(scale))
+	n := NewNet(ctx, &wg, []int{-5, 27, 8, 0}, NewSession())
 
-	n.Send(0, 1, struct{}{})
-	n.Send(0, 1, struct{}{})
-	n.Send(1, 2, struct{}{})
-	n.Send(1, 2, struct{}{})
-	n.Send(1, 2, struct{}{})
-	n.Send(0, 3, struct{}{})
-	n.Send(3, 1, struct{}{})
-	n.Send(3, 1, struct{}{})
+	_ = n.Send(-5, 27, struct{}{})
+	_ = n.Send(-5, 27, struct{}{})
+	_ = n.Send(27, 8, struct{}{})
+	_ = n.Send(27, 8, struct{}{})
+	_ = n.Send(27, 8, struct{}{})
+	_ = n.Send(-5, 0, struct{}{})
+	_ = n.Send(0, 27, struct{}{})
+	_ = n.Send(0, 27, struct{}{})
 
 	expected := `
     |  to|
 ----+----+----+----+----+----+
-from|    |   0|   1|   2|   3|
+from|    |  -5|  27|   8|   0|
 ----+----+----+----+----+----+
-    |   0|    |    |    |    |
-    |   1|   2|    |    |   2|
-    |   2|    |   3|    |    |
-    |   3|   1|    |    |    |
+    |  -5|    |    |    |    |
+    |  27|   2|    |    |   2|
+    |   8|    |   3|    |    |
+    |   0|   1|    |    |    |
 ----+----+----+----+----+----+
 `[1:] // remove first linebreak
 

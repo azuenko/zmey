@@ -19,10 +19,11 @@ func TestProcess(t *testing.T) {
         Debug: true,
     })
 
-    // Configure Zmey instance to run the system of 10 processes,
-    // with each process created by NewProcess(pid int) function
-    for i := 0; i < scale; i++ {
-        z.AddProcess(NewProcess)
+    // Add 10 processes with ids from 0 to 9. Each process is created with
+    // NewProcess(pid int) function.
+    const scale = 10
+    for pid := 0; pid < scale; pid++ {
+        z.SetProcess(pid, NewProcess(pid))
     }
 
     // Prepare the slices of initial calls, one slice per process
@@ -98,12 +99,9 @@ For more details check out the forwarder example.
 
 ### Status
 
-Zmey is in its alpha state. Current version is good for launching algorithms, and doing some failure simulation. It is capable of creating systems with different types of processes (client/sever, corrent/Byzantine server, etc), and doing some basic live reconfiguration. Next releases will primarily focus on stability and performance optimizations.
+Zmey is in its alpha state. Current version is good for launching algorithms, and doing some failure simulation. It is capable of creating systems with different types of processes (client/sever, corrent/Byzantine server, etc), and doing some reconfiguration (adding, removing and replacing the processes). Next releases will primarily focus on stability and performance optimizations.
 
-Also, new nice features expected, such as:
-
-* live reconfiguration (removing/replacing) processes
-* advanced network simulation (selective message drop and reordering)
+Also, the framework may include advanced network simulation, e.g. selective message drop and reordering.
 
 
 
