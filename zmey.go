@@ -49,6 +49,7 @@ type Zmey struct {
 type pack struct {
 	pid       int
 	process   Process
+	isStarted bool
 	client    *client
 	api       *api
 	callC     chan interface{}
@@ -75,6 +76,8 @@ type Process interface {
 	ReceiveCall(payload interface{})
 	// Tick represents time
 	Tick(uint)
+	// Start is called once per process before any message/call is delivered
+	Start()
 }
 
 // Config is used to initialize new zmey.Zmey instance.

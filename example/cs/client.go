@@ -119,3 +119,5 @@ func (c *Client) Tick(tick uint) {
 		c.api.Return(clientReturn)
 	}
 }
+
+func (c *Client) Start() {}

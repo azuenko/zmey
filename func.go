@@ -17,6 +17,11 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 
 	scale := len(z.packs)
 
+	if !pack.isStarted {
+		pack.process.Start()
+		pack.isStarted = true
+	}
+
 	cases := make([]reflect.SelectCase, scale+4)
 	for i, pid := range z.pids {
 		recvC, err := net.Recv(pack.pid, pid)

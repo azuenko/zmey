@@ -61,3 +61,5 @@ func (s *Server) Tick(tick uint) {
 	t := zmey.NewTracer("Tick [Server]")
 	s.api.Trace(t.Logf("received"))
 }
+
+func (s *Server) Start() {}

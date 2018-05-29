@@ -1,6 +1,7 @@
 package zmey
 
 import (
+	"fmt"
 	"log"
 )
 
@@ -42,6 +43,7 @@ func (a *api) Send(to int, payload interface{}) {
 		if err != nil {
 			log.Printf("[%4d] Send: Error: %s", a.pid, err)
 		}
+		a.Trace(fmt.Sprintf(">------> [%4d]: %#v", to, payload))
 	} else {
 		log.Printf("[%4d] Send: Error: network is nil", a.pid)
 	}
@@ -55,6 +57,7 @@ func (a *api) Return(c interface{}) {
 		log.Printf("[%4d] Return: returning call %+v", a.pid, c)
 	}
 	a.returnC <- c
+	a.Trace(fmt.Sprintf("+++++++++++++++: %#v", c))
 	if a.debug {
 		log.Printf("[%4d] Return: done", a.pid)
 	}

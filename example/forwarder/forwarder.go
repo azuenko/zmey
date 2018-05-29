@@ -72,6 +72,7 @@ func (f *Forwarder) ReceiveCall(c interface{}) {
 }
 
 // Tick implements Process.Tick
-func (f *Forwarder) Tick(uint) {
+func (f *Forwarder) Tick(uint) {}
 
-}
+// Start implements Process.Start
+func (f *Forwarder) Start() {}

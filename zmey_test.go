@@ -18,6 +18,7 @@ func (DummyProcess) Bind(API)                    {}
 func (DummyProcess) ReceiveNet(int, interface{}) {}
 func (DummyProcess) ReceiveCall(interface{})     {}
 func (DummyProcess) Tick(uint)                   {}
+func (DummyProcess) Start()                      {}
 
 func TestSetProcess(t *testing.T) {
 
