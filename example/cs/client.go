@@ -43,8 +43,8 @@ func NewClient(pid, serverPid int, timeout uint) zmey.Process {
 }
 
 // Bind implements Process.Bind
-func (c *Client) Bind(api zmey.API) {
-	c.api = api
+func (c *Client) Bind(api interface{}) {
+	c.api = api.(zmey.API)
 }
 
 // ReceiveNet implements Process.ReceiveNet

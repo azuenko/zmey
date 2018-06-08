@@ -26,8 +26,8 @@ func NewForwarder(pid int) zmey.Process {
 }
 
 // Bind implements Process.Bind
-func (f *Forwarder) Bind(api zmey.API) {
-	f.api = api
+func (f *Forwarder) Bind(api interface{}) {
+	f.api = api.(zmey.API)
 }
 
 // ReceiveNet implements Process.ReceiveNet

@@ -28,8 +28,8 @@ func NewServer(pid int) zmey.Process {
 }
 
 // Bind implements Process.Bind
-func (s *Server) Bind(api zmey.API) {
-	s.api = api
+func (s *Server) Bind(api interface{}) {
+	s.api = api.(zmey.API)
 }
 
 // ReceiveNet implements Process.ReceiveNet

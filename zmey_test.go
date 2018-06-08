@@ -14,7 +14,7 @@ import (
 
 type DummyProcess struct{}
 
-func (DummyProcess) Bind(API)                    {}
+func (DummyProcess) Bind(interface{})            {}
 func (DummyProcess) ReceiveNet(int, interface{}) {}
 func (DummyProcess) ReceiveCall(interface{})     {}
 func (DummyProcess) Tick(uint)                   {}
