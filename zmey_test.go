@@ -14,11 +14,14 @@ import (
 
 type DummyProcess struct{}
 
-func (DummyProcess) Bind(interface{})            {}
-func (DummyProcess) ReceiveNet(int, interface{}) {}
-func (DummyProcess) ReceiveCall(interface{})     {}
-func (DummyProcess) Tick(uint)                   {}
-func (DummyProcess) Start()                      {}
+func (DummyProcess) ReceiveNet(int, interface{})                          {}
+func (DummyProcess) ReceiveCall(interface{})                              {}
+func (DummyProcess) Tick(uint)                                            {}
+func (DummyProcess) Start()                                               {}
+func (DummyProcess) CallbackSend(sendF func(to int, payload interface{})) {}
+func (DummyProcess) CallbackReturn(returnF func(payload interface{}))     {}
+func (DummyProcess) CallbackTrace(traceF func(payload interface{}))       {}
+func (DummyProcess) CallbackError(errorF func(error))                     {}
 
 func TestSetProcess(t *testing.T) {
 

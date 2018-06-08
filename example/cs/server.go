@@ -7,7 +7,11 @@ import (
 // Server implements Process interface and runs server algorithm.
 type Server struct {
 	pid int
-	api zmey.API
+
+	sendF   func(to int, payload interface{})
+	returnF func(payload interface{})
+	traceF  func(payload interface{})
+	errorF  func(error)
 }
 
 // Request represents the message send from client to server.
@@ -27,9 +31,17 @@ func NewServer(pid int) zmey.Process {
 	return &Server{pid: pid}
 }
 
-// Bind implements Process.Bind
-func (s *Server) Bind(api interface{}) {
-	s.api = api.(zmey.API)
+func (s *Server) CallbackSend(sendF func(to int, payload interface{})) {
+	s.sendF = sendF
+}
+func (s *Server) CallbackReturn(returnF func(payload interface{})) {
+	s.returnF = returnF
+}
+func (s *Server) CallbackTrace(traceF func(payload interface{})) {
+	s.traceF = traceF
+}
+func (s *Server) CallbackError(errorF func(error)) {
+	s.errorF = errorF
 }
 
 // ReceiveNet implements Process.ReceiveNet
@@ -38,14 +50,14 @@ func (s *Server) ReceiveNet(from int, payload interface{}) {
 	switch msg := payload.(type) {
 	case Request:
 		t = t.Fork("received request %d", msg.ID)
-		s.api.Trace(t.Logf("received"))
+		s.traceF(t.Logf("received"))
 		response := Response{ID: msg.ID, Payload: msg.Payload}
-		s.api.Send(from, response)
-		s.api.Trace(t.Logf("sent response %d", response.ID))
+		s.sendF(from, response)
+		s.traceF(t.Logf("sent response %d", response.ID))
 	case Response:
-		s.api.ReportError(t.Errorf("server is not supposed to receive Response: %+v", msg))
+		s.errorF(t.Errorf("server is not supposed to receive Response: %+v", msg))
 	default:
-		s.api.ReportError(t.Errorf("cannot coerse to the correct type: %+v", payload))
+		s.errorF(t.Errorf("cannot coerse to the correct type: %+v", payload))
 	}
 
 }
@@ -53,13 +65,13 @@ func (s *Server) ReceiveNet(from int, payload interface{}) {
 // ReceiveCall implements Process.ReceiveCall
 func (s *Server) ReceiveCall(call interface{}) {
 	t := zmey.NewTracer("ReceiveCall [Server]")
-	s.api.ReportError(t.Errorf("server is not supposed to receive client calls"))
+	s.errorF(t.Errorf("server is not supposed to receive client calls"))
 }
 
 // Tick implements Process.Tick
 func (s *Server) Tick(tick uint) {
 	t := zmey.NewTracer("Tick [Server]")
-	s.api.Trace(t.Logf("received"))
+	s.traceF(t.Logf("received"))
 }
 
 func (s *Server) Start() {}

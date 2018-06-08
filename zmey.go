@@ -62,10 +62,6 @@ type pack struct {
 // algorithm being tested. The interface lets framework to communicate with
 // the process.
 type Process interface {
-	// Bind is called by the framework right after the creation of a process
-	// instance. It conveys API which should be used by the process to send back
-	// messages, calls and errors
-	Bind(interface{})
 	// ReceiveNet is called by the framework each time a process receives a message
 	// from the network.
 	ReceiveNet(from int, payload interface{})
@@ -76,6 +72,11 @@ type Process interface {
 	Tick(uint)
 	// Start is called once per process before any message/call is delivered
 	Start()
+
+	CallbackSend(func(to int, payload interface{}))
+	CallbackReturn(func(payload interface{}))
+	CallbackTrace(func(payload interface{}))
+	CallbackError(func(error))
 }
 
 // Config is used to initialize new zmey.Zmey instance.
@@ -150,7 +151,10 @@ func (z *Zmey) SetProcess(pid int, process Process) {
 		callC: callC,
 		debug: z.c.Debug,
 	}
-	process.Bind(&api)
+	process.CallbackSend(api.Send)
+	process.CallbackReturn(api.Return)
+	process.CallbackTrace(api.Trace)
+	process.CallbackError(api.ReportError)
 
 	p := pack{
 		pid:     pid,
