@@ -15,7 +15,7 @@ func TestPid(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, pids, NewSession())
+	n := NewNet(ctx, &wg, pids, NewSession(), OrderPolicyQueue)
 
 	var err error
 
@@ -47,7 +47,7 @@ func TestSingle(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, []int{3, 2, 1, 0}, NewSession())
+	n := NewNet(ctx, &wg, []int{3, 2, 1, 0}, NewSession(), OrderPolicyQueue)
 
 	var err error
 	data := 42
@@ -72,7 +72,7 @@ func TestLoopback(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, []int{0}, NewSession())
+	n := NewNet(ctx, &wg, []int{0}, NewSession(), OrderPolicyQueue)
 
 	var err error
 	data := 42
@@ -97,7 +97,7 @@ func TestQueue(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, []int{1, 2, 3, 4}, NewSession())
+	n := NewNet(ctx, &wg, []int{1, 2, 3, 4}, NewSession(), OrderPolicyQueue)
 
 	var err error
 
@@ -150,7 +150,7 @@ func TestBufferStats(t *testing.T) {
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	n := NewNet(ctx, &wg, []int{-5, 27, 8, 0}, NewSession())
+	n := NewNet(ctx, &wg, []int{-5, 27, 8, 0}, NewSession(), OrderPolicyQueue)
 
 	_ = n.Send(-5, 27, struct{}{})
 	_ = n.Send(-5, 27, struct{}{})

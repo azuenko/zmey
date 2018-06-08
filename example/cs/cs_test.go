@@ -60,7 +60,7 @@ func TestDefault(t *testing.T) {
 	var ctx context.Context
 	var cancelF context.CancelFunc
 
-	ctx, cancelF = context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancelF = context.WithTimeout(context.Background(), 3*time.Second)
 	responses, traces, err = z.Round(ctx)
 	cancelF()
 
@@ -92,7 +92,7 @@ func TestDefault(t *testing.T) {
 
 	z.Tick(tick)
 
-	ctx, cancelF = context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancelF = context.WithTimeout(context.Background(), 3*time.Second)
 
 	responses, traces, err = z.Round(ctx)
 

@@ -3,8 +3,6 @@ package zmey
 import (
 	"context"
 	"errors"
-	// "fmt"
-	// "log"
 	"sort"
 	"sync"
 	"time"
@@ -83,7 +81,8 @@ type Process interface {
 // Config is used to initialize new zmey.Zmey instance.
 type Config struct {
 	// Debug enables verbose logging
-	Debug bool
+	Debug       bool
+	OrderPolicy int
 }
 
 // FactoryFunc creates an instance of a process provided the process id
@@ -212,7 +211,7 @@ func (z *Zmey) Round(ctx context.Context) (map[int][]interface{}, map[int][]inte
 	session := NewSession()
 
 	ctxNet, cancelF := context.WithCancel(ctx)
-	net := NewNet(ctxNet, &wg, z.pids, session)
+	net := NewNet(ctxNet, &wg, z.pids, session, z.c.OrderPolicy)
 	cancelFs = append(cancelFs, cancelF)
 
 	for i := range z.packs {
@@ -221,7 +220,6 @@ func (z *Zmey) Round(ctx context.Context) (map[int][]interface{}, map[int][]inte
 
 	if z.filterF != nil {
 		net.Filter(z.filterF)
-		z.filterF = nil
 	}
 
 	for _, pack := range z.packs {

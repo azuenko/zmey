@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"reflect"
 	"strings"
 	"sync"
@@ -12,25 +13,32 @@ import (
 
 // TODO: add context
 
+const (
+	OrderPolicyQueue = iota
+	OrderPolicyStack
+	OrderPolicyRandom
+)
+
 // Net abstracts the inter-process connections
 type Net struct {
-	scale      int
-	pids       []int
-	rpids      map[int]int
-	session    *Session
-	filterF    FilterFunc
-	inputCs    []chan interface{}
-	outputCs   []chan interface{}
-	buffer     [][]interface{}
-	bufferLock sync.RWMutex
-	bufferedN  int
-	sentN      int
-	receivedN  int
+	scale       int
+	pids        []int
+	rpids       map[int]int
+	session     *Session
+	filterF     FilterFunc
+	inputCs     []chan interface{}
+	outputCs    []chan interface{}
+	buffer      [][]interface{}
+	bufferLock  sync.RWMutex
+	bufferedN   int
+	sentN       int
+	receivedN   int
+	orderPolicy int
 }
 
 // NewNet creates and returns a new instance of Net. Scale indicates the size
 // of the network, session may be optionally provided to report status and stats.
-func NewNet(ctx context.Context, wg *sync.WaitGroup, pids []int, session *Session) *Net {
+func NewNet(ctx context.Context, wg *sync.WaitGroup, pids []int, session *Session, orderPolicy int) *Net {
 
 	scale := len(pids)
 
@@ -41,13 +49,14 @@ func NewNet(ctx context.Context, wg *sync.WaitGroup, pids []int, session *Sessio
 	}
 
 	n := Net{
-		pids:     pids,
-		rpids:    rpids,
-		scale:    scale,
-		inputCs:  make([]chan interface{}, scale*scale),
-		outputCs: make([]chan interface{}, scale*scale),
-		buffer:   make([][]interface{}, scale*scale),
-		session:  session,
+		pids:        pids,
+		rpids:       rpids,
+		scale:       scale,
+		inputCs:     make([]chan interface{}, scale*scale),
+		outputCs:    make([]chan interface{}, scale*scale),
+		buffer:      make([][]interface{}, scale*scale),
+		session:     session,
+		orderPolicy: orderPolicy,
 	}
 
 	for i := range pids {
@@ -234,7 +243,28 @@ func (n *Net) push(index int, item interface{}) {
 	n.bufferLock.Lock()
 	defer n.bufferLock.Unlock()
 
-	n.buffer[index] = append(n.buffer[index], item)
+	switch n.orderPolicy {
+	case OrderPolicyStack:
+		newBuffer := make([]interface{}, len(n.buffer[index])+1)
+		insertPos := 0
+		copy(newBuffer[:insertPos], n.buffer[index][:insertPos])
+		copy(newBuffer[insertPos+1:], n.buffer[index][insertPos:])
+		newBuffer[insertPos] = item
+		n.buffer[index] = newBuffer
+	case OrderPolicyRandom:
+		newBuffer := make([]interface{}, len(n.buffer[index])+1)
+		if len(n.buffer[index]) == 0 {
+			n.buffer[index] = append(n.buffer[index], item)
+		} else {
+			insertPos := rand.Intn(len(n.buffer[index]))
+			copy(newBuffer[:insertPos], n.buffer[index][:insertPos])
+			copy(newBuffer[insertPos+1:], n.buffer[index][insertPos:])
+			newBuffer[insertPos] = item
+			n.buffer[index] = newBuffer
+		}
+	default:
+		n.buffer[index] = append(n.buffer[index], item)
+	}
 	n.bufferedN++
 	n.receivedN++
 }

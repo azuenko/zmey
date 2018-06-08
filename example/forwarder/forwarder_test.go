@@ -81,7 +81,7 @@ func testWithZmeyInstance(t *testing.T, z *zmey.Zmey, scale, perNode int) {
 
 	z.Inject(injectF)
 
-	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
 
 	responses, traces, err := z.Round(ctx)
 
@@ -168,7 +168,7 @@ func TestCrash(t *testing.T) {
 	}
 	z.Inject(injectF)
 
-	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
 
 	responses, _, err := z.Round(ctx)
 

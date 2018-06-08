@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -18,7 +19,17 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 	scale := len(z.packs)
 
 	if !pack.isStarted {
-		pack.process.Start()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[%4d] processLoop: panic: %v", pack.pid, r)
+					debug.PrintStack()
+					return
+				}
+			}()
+			pack.process.Start()
+		}()
+
 		pack.isStarted = true
 	}
 
@@ -71,7 +82,17 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: received message from %d : %+v", pack.pid, chosen, payload)
 			}
-			pack.process.ReceiveNet(z.pids[chosen], payload)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[%4d] processLoop: panic: %v", pack.pid, r)
+						debug.PrintStack()
+						return
+					}
+				}()
+				pack.api.Trace(fmt.Sprintf("<------< [%4d]: %#v", z.pids[chosen], payload))
+				pack.process.ReceiveNet(z.pids[chosen], payload)
+			}()
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: message processed", pack.pid)
 			}
@@ -81,7 +102,17 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: received call: %+v", pack.pid, call)
 			}
-			pack.process.ReceiveCall(call)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[%4d] processLoop: panic: %v", pack.pid, r)
+						debug.PrintStack()
+						return
+					}
+				}()
+				pack.process.ReceiveCall(call)
+			}()
+
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: call processed", pack.pid)
 			}
@@ -95,7 +126,17 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: received tick: %d", pack.pid, t)
 			}
-			pack.process.Tick(t)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[%4d] processLoop: panic: %v", pack.pid, r)
+						debug.PrintStack()
+						return
+					}
+				}()
+				pack.process.Tick(t)
+			}()
+
 		case chosen == scale+2: // timeout
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: idle", pack.pid)
