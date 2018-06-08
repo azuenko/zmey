@@ -43,7 +43,7 @@ func (a *api) Send(to int, payload interface{}) {
 		if err != nil {
 			log.Printf("[%4d] Send: Error: %s", a.pid, err)
 		}
-		a.Trace(fmt.Sprintf(">------> [%4d]: %#v", to, payload))
+		a.Trace(fmt.Sprintf(">------> [%4d]: SEND %#v", to, payload))
 	} else {
 		log.Printf("[%4d] Send: Error: network is nil", a.pid)
 	}
@@ -57,7 +57,7 @@ func (a *api) Return(c interface{}) {
 		log.Printf("[%4d] Return: returning call %+v", a.pid, c)
 	}
 	a.returnC <- c
-	a.Trace(fmt.Sprintf("+++++++++++++++: %#v", c))
+	a.Trace(fmt.Sprintf("+++++++++++++++: RETURN %#v", c))
 	if a.debug {
 		log.Printf("[%4d] Return: done", a.pid)
 	}
@@ -72,5 +72,5 @@ func (a *api) Trace(t interface{}) {
 
 func (a *api) ReportError(err error) {
 	log.Printf("[%4d] ReportError: %s", a.pid, err)
-	a.traceC <- err
+	a.Trace(fmt.Sprintf("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%: ERROR %s", err.Error()))
 }

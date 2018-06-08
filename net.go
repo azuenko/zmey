@@ -243,30 +243,24 @@ func (n *Net) push(index int, item interface{}) {
 	n.bufferLock.Lock()
 	defer n.bufferLock.Unlock()
 
-	switch n.orderPolicy {
-	case OrderPolicyStack:
-		newBuffer := make([]interface{}, len(n.buffer[index])+1)
-		insertPos := 0
-		copy(newBuffer[:insertPos], n.buffer[index][:insertPos])
-		copy(newBuffer[insertPos+1:], n.buffer[index][insertPos:])
-		newBuffer[insertPos] = item
-		n.buffer[index] = newBuffer
-	case OrderPolicyRandom:
-		newBuffer := make([]interface{}, len(n.buffer[index])+1)
-		if len(n.buffer[index]) == 0 {
-			n.buffer[index] = append(n.buffer[index], item)
-		} else {
-			insertPos := rand.Intn(len(n.buffer[index]))
-			copy(newBuffer[:insertPos], n.buffer[index][:insertPos])
-			copy(newBuffer[insertPos+1:], n.buffer[index][insertPos:])
-			newBuffer[insertPos] = item
-			n.buffer[index] = newBuffer
-		}
-	default:
-		n.buffer[index] = append(n.buffer[index], item)
-	}
 	n.bufferedN++
 	n.receivedN++
+
+	if len(n.buffer[index]) == 0 || n.orderPolicy == OrderPolicyQueue {
+		n.buffer[index] = append(n.buffer[index], item)
+		return
+	}
+
+	insertPos := 0
+	if n.orderPolicy == OrderPolicyRandom {
+		insertPos = rand.Intn(len(n.buffer[index]))
+	}
+
+	newBuffer := make([]interface{}, len(n.buffer[index])+1)
+	copy(newBuffer[:insertPos], n.buffer[index][:insertPos])
+	copy(newBuffer[insertPos+1:], n.buffer[index][insertPos:])
+	newBuffer[insertPos] = item
+	n.buffer[index] = newBuffer
 }
 
 func (n *Net) pop(index int) interface{} {

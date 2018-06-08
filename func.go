@@ -19,6 +19,7 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 	scale := len(z.packs)
 
 	if !pack.isStarted {
+		pack.api.Trace("<--------------: START")
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -82,6 +83,7 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: received message from %d : %+v", pack.pid, chosen, payload)
 			}
+			pack.api.Trace(fmt.Sprintf("<------< [%4d]: RECEIVE %#v", z.pids[chosen], payload))
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -90,7 +92,6 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 						return
 					}
 				}()
-				pack.api.Trace(fmt.Sprintf("<------< [%4d]: %#v", z.pids[chosen], payload))
 				pack.process.ReceiveNet(z.pids[chosen], payload)
 			}()
 			if z.c.Debug {
@@ -102,6 +103,7 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: received call: %+v", pack.pid, call)
 			}
+			pack.api.Trace(fmt.Sprintf("<--------------: CALL %#v", call))
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -126,6 +128,7 @@ func (z *Zmey) processLoop(ctx context.Context, wg *sync.WaitGroup, pack *pack, 
 			if z.c.Debug {
 				log.Printf("[%4d] processLoop: received tick: %d", pack.pid, t)
 			}
+			pack.api.Trace(fmt.Sprintf("<--------------: TICK ‹%4d›", t))
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
