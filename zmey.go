@@ -62,16 +62,16 @@ type pack struct {
 // algorithm being tested. The interface lets framework to communicate with
 // the process.
 type Process interface {
-	// ReceiveNet is called by the framework each time a process receives a message
-	// from the network.
-	ReceiveNet(from int, payload interface{})
+	// Start is called once per process before any message/call is delivered
+	Start()
 	// ReceiveCall is called by the framework each time an injector executes Call function
 	// from Client interface
 	ReceiveCall(payload interface{})
+	// ReceiveNet is called by the framework each time a process receives a message
+	// from the network.
+	ReceiveNet(from int, payload interface{})
 	// Tick represents time
 	Tick(uint)
-	// Start is called once per process before any message/call is delivered
-	Start()
 
 	CallbackSend(func(to int, payload interface{}))
 	CallbackReturn(func(payload interface{}))
