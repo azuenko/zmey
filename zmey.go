@@ -65,7 +65,7 @@ type Process interface {
 	// Bind is called by the framework right after the creation of a process
 	// instance. It conveys API which should be used by the process to send back
 	// messages, calls and errors
-	Bind(API)
+	Bind(interface{})
 	// ReceiveNet is called by the framework each time a process receives a message
 	// from the network.
 	ReceiveNet(from int, payload interface{})
