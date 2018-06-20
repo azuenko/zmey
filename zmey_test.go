@@ -1,20 +1,20 @@
 package zmey
 
 import (
-	// "context"
-	// "log"
-	// "math/rand"
-	// "sort"
 	"testing"
-	// "time"
 
 	"github.com/stretchr/testify/assert"
-	// "github.com/stretchr/testify/require"
 )
 
 type DummyProcess struct{}
 
-func (DummyProcess) Bind(API)                    {}
+func (DummyProcess) Init(
+	func(to int, payload interface{}),
+	func(payload interface{}),
+	func(payload interface{}),
+	func(error),
+) {
+}
 func (DummyProcess) ReceiveNet(int, interface{}) {}
 func (DummyProcess) ReceiveCall(interface{})     {}
 func (DummyProcess) Tick(uint)                   {}

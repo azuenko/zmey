@@ -69,5 +69,4 @@ func (a *api) Trace(t interface{}) {
 
 func (a *api) ReportError(err error) {
 	log.Printf("[%4d] ReportError: %s", a.pid, err)
-	a.traceC <- err
 }

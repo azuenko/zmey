@@ -75,25 +75,21 @@ The process being tested is created by `NewProcess` function. It should return a
 
 ```go
 type Process interface {
-    Bind(API)
+    Init(
+        sendF func(to int, payload interface{}),
+        returnF func(payload interface{}),
+        traceF func(payload interface{}),
+        errorF func(error),
+    )
     ReceiveNet(from int, payload interface{})
     ReceiveCall(payload interface{})
     Tick(uint)
 }
 ```
 
-The framework notifies the process about incoming messages and client calls by calling `ReceiveNet` and `ReceiveCall` methods. Time passing is conveyed through `Tick` events. The process talks back to the framework through `zmey.API` interface, received via `Bind` method:
+The framework notifies the process about incoming messages and client calls by calling `ReceiveNet` and `ReceiveCall` methods. Time passing is conveyed through `Tick` events. The process talks back to the framework through the set of callbacks, received via `Init` method.
 
-```go
-type interface API {
-    Send(to int, payload interface{})
-    Return(payload interface{})
-    Trace(payload interface{})
-    ReportError(error)
-}
-```
-
-`Send` is used to communicate to other processes over the network, `Return` -- to return the data back to the client. `Trace` and `ReportError` are mainly used for logging. The returned data would be then collected and returned by the `Round` method.
+`sendF` is used to communicate to other processes over the network, `returnF` -- to return the data back to the client. `traceF` and `errorF` are mainly used for logging. The returned data would be then collected and returned by the `Round` method.
 
 For more details check out the forwarder example.
 

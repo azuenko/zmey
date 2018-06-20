@@ -3,8 +3,6 @@ package zmey
 import (
 	"context"
 	"errors"
-	// "fmt"
-	// "log"
 	"sort"
 	"sync"
 	"time"
@@ -49,6 +47,7 @@ type Zmey struct {
 type pack struct {
 	pid       int
 	process   Process
+	isStarted bool
 	client    *client
 	api       *api
 	callC     chan interface{}
@@ -63,16 +62,19 @@ type pack struct {
 // algorithm being tested. The interface lets framework to communicate with
 // the process.
 type Process interface {
-	// Bind is called by the framework right after the creation of a process
-	// instance. It conveys API which should be used by the process to send back
-	// messages, calls and errors
-	Bind(API)
-	// ReceiveNet is called by the framework each time a process receives a message
-	// from the network.
-	ReceiveNet(from int, payload interface{})
+	// Init is called once per process before any message/call is delivered
+	Init(
+		sendF func(to int, payload interface{}),
+		returnF func(payload interface{}),
+		traceF func(payload interface{}),
+		errorF func(error),
+	)
 	// ReceiveCall is called by the framework each time an injector executes Call function
 	// from Client interface
 	ReceiveCall(payload interface{})
+	// ReceiveNet is called by the framework each time a process receives a message
+	// from the network.
+	ReceiveNet(from int, payload interface{})
 	// Tick represents time
 	Tick(uint)
 }
@@ -148,7 +150,6 @@ func (z *Zmey) SetProcess(pid int, process Process) {
 		callC: callC,
 		debug: z.c.Debug,
 	}
-	process.Bind(&api)
 
 	p := pack{
 		pid:     pid,
@@ -218,7 +219,6 @@ func (z *Zmey) Round(ctx context.Context) (map[int][]interface{}, map[int][]inte
 
 	if z.filterF != nil {
 		net.Filter(z.filterF)
-		z.filterF = nil
 	}
 
 	for _, pack := range z.packs {

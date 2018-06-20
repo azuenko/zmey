@@ -7,11 +7,15 @@ import (
 // Client implements Process interface and runs client algorithm.
 type Client struct {
 	pid             int
-	api             zmey.API
 	pendingRequests []TimestampedCall
 	serverPid       int
 	time            uint
 	timeout         uint
+
+	sendF   func(to int, payload interface{})
+	returnF func(payload interface{})
+	traceF  func(payload interface{})
+	errorF  func(error)
 }
 
 // Call represents the data passed from injector to client.
@@ -33,7 +37,7 @@ type TimestampedCall struct {
 	Timestamp uint
 }
 
-// NewClient creates and initializes an instance of a Client
+// NewClient creates an instance of a Client
 func NewClient(pid, serverPid int, timeout uint) zmey.Process {
 	return &Client{
 		pid:       pid,
@@ -42,9 +46,17 @@ func NewClient(pid, serverPid int, timeout uint) zmey.Process {
 	}
 }
 
-// Bind implements Process.Bind
-func (c *Client) Bind(api zmey.API) {
-	c.api = api
+// Init initializes an instance of a Client
+func (c *Client) Init(
+	sendF func(to int, payload interface{}),
+	returnF func(payload interface{}),
+	traceF func(payload interface{}),
+	errorF func(error),
+) {
+	c.sendF = sendF
+	c.returnF = returnF
+	c.traceF = traceF
+	c.errorF = errorF
 }
 
 // ReceiveNet implements Process.ReceiveNet
@@ -52,14 +64,14 @@ func (c *Client) ReceiveNet(from int, payload interface{}) {
 	t := zmey.NewTracer("ReceiveNet [Client]")
 	msg, ok := payload.(Response)
 	if !ok {
-		c.api.ReportError(t.Errorf("cannot coerse to the Response type: %+v", payload))
+		c.errorF(t.Errorf("cannot coerse to the Response type: %+v", payload))
 	}
 
 	t = t.Fork("response %d", msg.ID)
-	c.api.Trace(t.Logf("received"))
+	c.traceF(t.Logf("received"))
 	clientReturn := Return{ID: msg.ID, Payload: msg.Payload, Timeout: false}
-	c.api.Return(clientReturn)
-	c.api.Trace(t.Logf("returned"))
+	c.returnF(clientReturn)
+	c.traceF(t.Logf("returned"))
 
 	remainingRequests := make([]TimestampedCall, 0, len(c.pendingRequests))
 	for i := range c.pendingRequests {
@@ -77,23 +89,23 @@ func (c *Client) ReceiveCall(call interface{}) {
 	t := zmey.NewTracer("ReceiveCall [Client]")
 	msg, ok := call.(Call)
 	if !ok {
-		c.api.ReportError(t.Errorf("cannot coerce to Call: %+v", call))
+		c.errorF(t.Errorf("cannot coerce to Call: %+v", call))
 		return
 	}
 
 	t = t.Fork("client call %d", msg.ID)
-	c.api.Trace(t.Logf("received"))
+	c.traceF(t.Logf("received"))
 
 	c.pendingRequests = append(c.pendingRequests, TimestampedCall{Call: msg, Timestamp: c.time})
 
-	c.api.Send(c.serverPid, Request{ID: msg.ID, Payload: msg.Payload})
+	c.sendF(c.serverPid, Request{ID: msg.ID, Payload: msg.Payload})
 }
 
 // Tick implements Process.Tick
 func (c *Client) Tick(tick uint) {
 	t := zmey.NewTracer("Tick [Client]")
 	t = t.Fork("%d", tick)
-	c.api.Trace(t.Logf("received"))
+	c.traceF(t.Logf("received"))
 
 	c.time += tick
 
@@ -110,12 +122,12 @@ func (c *Client) Tick(tick uint) {
 	c.pendingRequests = remainingRequests
 
 	for i := range timeoutRequests {
-		c.api.Trace(t.Logf("timeout for call %d, returning request", timeoutRequests[i].Call.ID))
+		c.traceF(t.Logf("timeout for call %d, returning request", timeoutRequests[i].Call.ID))
 		clientReturn := Return{
 			ID:      timeoutRequests[i].Call.ID,
 			Payload: timeoutRequests[i].Call.Payload,
 			Timeout: true,
 		}
-		c.api.Return(clientReturn)
+		c.returnF(clientReturn)
 	}
 }

@@ -6,8 +6,11 @@ import (
 
 // Forwarder implements Process interface and runs simple forwarding algorithm
 type Forwarder struct {
-	pid int
-	api zmey.API
+	pid     int
+	sendF   func(to int, payload interface{})
+	returnF func(payload interface{})
+	traceF  func(payload interface{})
+	errorF  func(error)
 }
 
 // FCall represents a message exchanged between forwarder process and client
@@ -25,9 +28,17 @@ func NewForwarder(pid int) zmey.Process {
 	return &Forwarder{pid: pid}
 }
 
-// Bind implements Process.Bind
-func (f *Forwarder) Bind(api zmey.API) {
-	f.api = api
+// Init initializes an instance of Forwarder process
+func (f *Forwarder) Init(
+	sendF func(to int, payload interface{}),
+	returnF func(payload interface{}),
+	traceF func(payload interface{}),
+	errorF func(error),
+) {
+	f.sendF = sendF
+	f.returnF = returnF
+	f.traceF = traceF
+	f.errorF = errorF
 }
 
 // ReceiveNet implements Process.ReceiveNet
@@ -35,17 +46,17 @@ func (f *Forwarder) ReceiveNet(from int, payload interface{}) {
 	t := zmey.NewTracer("ReceiveNet")
 	fcall, ok := payload.(FCall)
 	if !ok {
-		f.api.ReportError(t.Errorf("cannot coerce to FCall: %+v", payload))
+		f.errorF(t.Errorf("cannot coerce to FCall: %+v", payload))
 		return
 	}
 
 	if fcall.To != f.pid {
-		f.api.ReportError(t.Errorf("%d: incorrect recepient, should be %d", fcall.To, f.pid))
+		f.errorF(t.Errorf("%d: incorrect recepient, should be %d", fcall.To, f.pid))
 		return
 	}
 
-	f.api.Trace(t.Logf("%d return net", fcall.SequenceNumber))
-	f.api.Return(payload)
+	f.traceF(t.Logf("%d return net", fcall.SequenceNumber))
+	f.returnF(payload)
 }
 
 // ReceiveCall implements Process.ReceiveCall
@@ -53,25 +64,26 @@ func (f *Forwarder) ReceiveCall(c interface{}) {
 	t := zmey.NewTracer("ReceiveCall")
 	fcall, ok := c.(FCall)
 	if !ok {
-		f.api.ReportError(t.Errorf("cannot coerce to FCall: %+v", c))
+		f.errorF(t.Errorf("cannot coerce to FCall: %+v", c))
 		return
 	}
 
 	t = t.Fork("FCall %d", fcall.SequenceNumber)
 
-	f.api.Trace(t.Logf("receive"))
+	f.traceF(t.Logf("receive"))
 
 	if fcall.To == f.pid { // Local call
-		f.api.Trace(t.Logf("return local"))
-		f.api.Return(c)
+		f.traceF(t.Logf("return local"))
+		f.returnF(c)
 		return
 	}
 
-	f.api.Trace(t.Logf("forward"))
-	f.api.Send(fcall.To, fcall)
+	f.traceF(t.Logf("forward"))
+	f.sendF(fcall.To, fcall)
 }
 
 // Tick implements Process.Tick
-func (f *Forwarder) Tick(uint) {
+func (f *Forwarder) Tick(uint) {}
 
-}
+// Start implements Process.Start
+func (f *Forwarder) Start() {}

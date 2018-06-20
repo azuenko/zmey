@@ -234,9 +234,10 @@ func (n *Net) push(index int, item interface{}) {
 	n.bufferLock.Lock()
 	defer n.bufferLock.Unlock()
 
-	n.buffer[index] = append(n.buffer[index], item)
 	n.bufferedN++
 	n.receivedN++
+
+	n.buffer[index] = append(n.buffer[index], item)
 }
 
 func (n *Net) pop(index int) interface{} {
